@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/laravel-relevance.svg" alt="Laravel Relevance" width="100%">
+</p>
+
 # Laravel Relevance
 
 [![Latest Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/acme/laravel-relevance)
