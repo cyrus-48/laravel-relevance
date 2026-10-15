@@ -1,0 +1,16 @@
+/vendor/
+/node_modules/
+.phpunit.cache/
+.phpstan.cache/
+.pest/
+.env
+.env.backup
+.env.production
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
