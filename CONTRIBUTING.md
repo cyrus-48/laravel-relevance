@@ -24,7 +24,7 @@ To ensure an open and welcoming ecosystem, we expect all participants to maintai
 
 1. Fork and clone the repository:
    ```bash
-   git clone https://github.com/your-username/laravel-relevance.git
+   git clone https://github.com/cyrus-48/laravel-relevance.git
    cd laravel-relevance
    ```
 
