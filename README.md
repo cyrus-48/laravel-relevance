@@ -13,6 +13,9 @@
 
 **Laravel Relevance** is an enterprise-grade search and recommendation orchestration toolkit for Laravel. Rather than being a simple engine wrapper, it provides the end-to-end relevance engineering pipeline: transactional outbox indexing, zero-downtime reindexing, vector embeddings, hybrid Reciprocal Rank Fusion (RRF), query rules, business signal boosts, recommendation placements with collaborative filtering, A/B experiments, offline relevance evaluation gates (NDCG@10), cross-encoder rerankers, diversity field collapse, federated multi-search, RAG chunk retrieval, and GDPR privacy tooling.
 
+> [!WARNING]
+> **Active Early Development**: Laravel Relevance is currently under active pre-v1.0 development. Public APIs and schema definitions may evolve before the initial stable release. Testing in non-production environments and contributing feedback, bug reports, and ideas via GitHub Issues is highly encouraged!
+
 ---
 
 ## Table of Contents
@@ -434,6 +437,12 @@ composer analyse
 # or
 vendor/bin/phpstan analyse
 ```
+
+---
+
+## Contributing
+
+Contributions, bug reports, and pull requests are warmly welcomed! Please read our [**Contributing Guide**](CONTRIBUTING.md) for coding standards, strict PHPStan Level 8 guidelines, test execution, and the pull request checklist.
 
 ---
 
