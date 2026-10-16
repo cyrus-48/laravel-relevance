@@ -1,5 +1,5 @@
 {
-    "name": "acme/laravel-relevance",
+    "name": "cyrus-48/laravel-relevance",
     "description": "A Multipurpose Search & Recommendation Toolkit for Laravel",
     "type": "library",
     "license": "MIT",
