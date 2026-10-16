@@ -9,6 +9,7 @@ use Relevance\Contracts\IndexAdmin;
 use Relevance\Drivers\DriverManager;
 use Relevance\Events\IndexGenerationActivated;
 use Relevance\Schema\IndexDefinition;
+use Throwable;
 
 class GenerationManager
 {
@@ -48,26 +49,38 @@ class GenerationManager
             ->where('generation', $gen)
             ->firstOrFail();
 
-        DB::transaction(function () use ($index, $target) {
-            $driver = $this->driverManager->driver();
-            if ($driver instanceof IndexAdmin) {
-                $driver->swapAlias($index, $target->physical_name);
+        $previous = $this->activeGeneration($index);
+        $driver = $this->driverManager->driver();
+
+        // 1. Flip the alias in the engine. This is an external side effect, so it is done
+        //    before (and outside of) the DB transaction that records it.
+        if ($driver instanceof IndexAdmin) {
+            $driver->swapAlias($index, $target->physical_name);
+        }
+
+        // 2. Record the new state. If that fails, put the alias back so the engine and the
+        //    generations table never disagree about which generation is live.
+        try {
+            DB::transaction(function () use ($index, $target): void {
+                IndexGeneration::forIndex($index)
+                    ->where('state', 'active')
+                    ->update([
+                        'state'      => 'retired',
+                        'retired_at' => now(),
+                    ]);
+
+                $target->update([
+                    'state'        => 'active',
+                    'activated_at' => now(),
+                ]);
+            });
+        } catch (Throwable $e) {
+            if ($driver instanceof IndexAdmin && $previous !== null) {
+                $driver->swapAlias($index, $previous->physical_name);
             }
 
-            // Retire currently active generation
-            IndexGeneration::forIndex($index)
-                ->where('state', 'active')
-                ->update([
-                    'state'      => 'retired',
-                    'retired_at' => now(),
-                ]);
-
-            // Activate new generation
-            $target->update([
-                'state'        => 'active',
-                'activated_at' => now(),
-            ]);
-        });
+            throw $e;
+        }
 
         event(new IndexGenerationActivated($index, $gen));
     }

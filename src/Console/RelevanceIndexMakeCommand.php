@@ -53,8 +53,9 @@ declare(strict_types=1);
 
 namespace App\Search;
 
-use Relevance\Indexing\IndexDefinition;
-use Relevance\Schema\IndexSchemaBuilder;
+use Illuminate\Database\Eloquent\Builder;
+use Relevance\Schema\IndexDefinition;
+use Relevance\Schema\Schema;
 
 class {$className} extends IndexDefinition
 {
@@ -63,14 +64,39 @@ class {$className} extends IndexDefinition
         return '{$indexName}';
     }
 
-    public function schema(IndexSchemaBuilder \$schema): void
+    /**
+     * Source query used by `relevance:index:rebuild`. Return your Eloquent query,
+     * e.g. `return \\App\\Models\\Product::query();`
+     */
+    public function source(): ?Builder
     {
-        \$schema->string('title')->searchable()->weight(2.0);
-        \$schema->text('body')->searchable();
-        \$schema->keyword('category')->filterable()->facet();
-        \$schema->float('price')->filterable()->sortable();
-        \$schema->boolean('in_stock')->filterable();
-        \$schema->vector('embedding', dimensions: 1536)->similarity('cosine');
+        return null;
+    }
+
+    public function schema(Schema \$s): void
+    {
+        \$s->id('id');
+        \$s->text('title')->weight(2.0);
+        \$s->text('body');
+        \$s->keyword('category')->filterable()->facet();
+        \$s->number('price')->filterable()->sortable();
+        \$s->bool('in_stock')->filterable();
+        \$s->vector('embedding')->from(['title', 'body']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toDocument(mixed \$item): array
+    {
+        return [
+            'id'       => (string) \$item->getKey(),
+            'title'    => \$item->title,
+            'body'     => \$item->body,
+            'category' => \$item->category,
+            'price'    => (float) \$item->price,
+            'in_stock' => (bool) \$item->in_stock,
+        ];
     }
 }
 

@@ -71,16 +71,28 @@ class RelevancePruneCommand extends Command
                 ->delete();
         }
 
+        // Finished outbox rows carry a full document payload; without pruning they grow forever.
+        // Pending/processing/dead rows are never pruned (dead rows need a human look).
+        $outboxDays = (int) config('relevance.retention.outbox_days', 7);
+        $deletedOutbox = 0;
+        if (Schema::hasTable('relevance_outbox')) {
+            $deletedOutbox = DB::table('relevance_outbox')
+                ->where('status', 'done')
+                ->where('processed_at', '<', Carbon::now()->subDays($outboxDays))
+                ->delete();
+        }
+
         $this->table(
             ['Dataset', 'Retention Window', 'Deleted Rows'],
             [
                 ['Interactions', "{$interactionsDays} days", $deletedInteractions],
                 ['Search Logs', "{$searchLogsDays} days", $deletedSearchLogs],
                 ['Events / Impressions', "{$impressionsDays} days", $deletedEvents],
+                ['Outbox (done)', "{$outboxDays} days", $deletedOutbox],
             ]
         );
 
-        $total = $deletedInteractions + $deletedSearchLogs + $deletedEvents;
+        $total = $deletedInteractions + $deletedSearchLogs + $deletedEvents + $deletedOutbox;
         $this->info("Pruning completed. Total records deleted: {$total}");
 
         return self::SUCCESS;

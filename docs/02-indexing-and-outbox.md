@@ -15,8 +15,10 @@ In `app/Search/ArticleIndex.php`:
 ```php
 namespace App\Search;
 
-use Relevance\Indexing\IndexDefinition;
-use Relevance\Schema\IndexSchemaBuilder;
+use App\Models\Article;
+use Illuminate\Database\Eloquent\Builder;
+use Relevance\Schema\IndexDefinition;
+use Relevance\Schema\Schema;
 
 class ArticleIndex extends IndexDefinition
 {
@@ -25,19 +27,42 @@ class ArticleIndex extends IndexDefinition
         return 'articles';
     }
 
-    public function schema(IndexSchemaBuilder $schema): void
+    public function source(): ?Builder
     {
-        $schema->string('title')->searchable()->weight(3.0);
-        $schema->text('content')->searchable();
-        $schema->keyword('author')->filterable()->facet();
-        $schema->keyword('tags')->filterable()->facet();
-        $schema->date('published_at')->filterable()->sortable();
-        $schema->boolean('is_published')->filterable();
-        
-        // Dense Vector for Semantic Search
-        $schema->vector('embedding', dimensions: 1536)
-               ->source(['title', 'content'])
-               ->similarity('cosine');
+        return Article::query()->with('author');
+    }
+
+    public function schema(Schema $s): void
+    {
+        $s->id('id');
+        $s->text('title')->weight(3.0)->highlight();
+        $s->text('content');
+        $s->keyword('author')->filterable()->facet();
+        $s->keyword('tags')->multiple()->filterable()->facet();
+        $s->date('published_at')->filterable()->sortable();
+        $s->bool('is_published')->filterable();
+
+        // Dense vector for semantic search, built from the listed fields.
+        $s->vector('embedding')->from(['title', 'content']);
+    }
+
+    public function toDocument(mixed $item): array
+    {
+        /** @var Article $item */
+        return [
+            'id'           => (string) $item->getKey(),
+            'title'        => $item->title,
+            'content'      => strip_tags((string) $item->content),
+            'author'       => $item->author?->name,
+            'tags'         => $item->tags->pluck('name')->all(),
+            'published_at' => $item->published_at?->getTimestamp(),
+            'is_published' => (bool) $item->is_published,
+        ];
+    }
+
+    public function shouldIndex(mixed $item): bool
+    {
+        return $item->is_published;
     }
 }
 ```
@@ -60,7 +85,7 @@ Laravel Relevance solves this with the **Transactional Outbox**:
 [ INSERT INTO relevance_outbox (doc_id, version, op, status='pending') ]
        │
        ▼ (afterCommit hook)
-[ DrainOutbox::dispatchDebounced() ]
+[ DrainOutbox::dispatch() ]
        │
        ▼ (Queue Worker)
 [ Coalesce batch -> Embed -> Upsert into Physical Index Generation ]
@@ -68,11 +93,12 @@ Laravel Relevance solves this with the **Transactional Outbox**:
 
 ### Making a Model Searchable
 
-Add the `Searchable` trait:
+Add the `Searchable` trait and point the model at its index definition:
 
 ```php
 namespace App\Models;
 
+use App\Search\ArticleIndex;
 use Illuminate\Database\Eloquent\Model;
 use Relevance\Concerns\Searchable;
 
@@ -80,24 +106,16 @@ class Article extends Model
 {
     use Searchable;
 
-    public function searchableAs(): string
+    public static function relevanceIndex(): ?string
     {
-        return 'articles';
-    }
-
-    public function toSearchableArray(): array
-    {
-        return [
-            'title'        => $this->title,
-            'content'      => $this->body,
-            'author'       => $this->author->name,
-            'tags'         => $this->tags->pluck('name')->all(),
-            'published_at' => $this->published_at?->toIso8601String(),
-            'is_published' => (bool) $this->is_published,
-        ];
+        return ArticleIndex::class;
     }
 }
 ```
+
+The trait's boot hook attaches the outbox observer automatically; the model does not need to be
+listed anywhere else. What gets indexed is whatever `ArticleIndex::toDocument()` returns, and
+`ArticleIndex::shouldIndex()` decides whether a save becomes an upsert or a delete.
 
 ### Draining the Outbox Manually
 

@@ -116,6 +116,20 @@ abstract class IndexDefinition
         return $this->compiled = $schema->compile($this->name());
     }
 
+    /**
+     * Name of the (first) vector field in the schema, or null if the index has none.
+     */
+    public function vectorFieldName(): ?string
+    {
+        foreach ($this->compiledSchema()->fields as $name => $field) {
+            if (is_array($field) && ($field['type'] ?? null) === 'vector') {
+                return (string) $name;
+            }
+        }
+
+        return null;
+    }
+
     public function schemaHash(): string
     {
         return Hasher::hash($this->compiledSchema()->fields);

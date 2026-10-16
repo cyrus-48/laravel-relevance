@@ -78,8 +78,10 @@ In `app/Search/ProductIndex.php`:
 ```php
 namespace App\Search;
 
-use Relevance\Indexing\IndexDefinition;
-use Relevance\Schema\IndexSchemaBuilder;
+use App\Models\Product;
+use Illuminate\Database\Eloquent\Builder;
+use Relevance\Schema\IndexDefinition;
+use Relevance\Schema\Schema;
 
 class ProductIndex extends IndexDefinition
 {
@@ -88,15 +90,38 @@ class ProductIndex extends IndexDefinition
         return 'products';
     }
 
-    public function schema(IndexSchemaBuilder $schema): void
+    /** Source query used by `relevance:index:rebuild` (eager-load what toDocument() touches). */
+    public function source(): ?Builder
     {
-        $schema->string('title')->searchable()->weight(2.0);
-        $schema->text('description')->searchable();
-        $schema->keyword('brand')->filterable()->facet();
-        $schema->keyword('category')->filterable()->facet();
-        $schema->float('price')->filterable()->sortable();
-        $schema->boolean('in_stock')->filterable();
-        $schema->vector('embedding', dimensions: 1536)->similarity('cosine');
+        return Product::query();
+    }
+
+    public function schema(Schema $s): void
+    {
+        $s->id('id');
+        $s->text('title')->weight(2.0);
+        $s->text('description');
+        $s->keyword('brand')->filterable()->facet();
+        $s->keyword('category')->filterable()->facet();
+        $s->number('price')->filterable()->sortable();
+        $s->bool('in_stock')->filterable();
+
+        // Embedded from the listed fields via the configured embedding provider.
+        $s->vector('embedding')->from(['title', 'description']);
+    }
+
+    public function toDocument(mixed $item): array
+    {
+        /** @var Product $item */
+        return [
+            'id'          => (string) $item->getKey(),
+            'title'       => $item->title,
+            'description' => $item->description,
+            'brand'       => $item->brand,
+            'category'    => $item->category,
+            'price'       => (float) $item->price,
+            'in_stock'    => (bool) $item->in_stock,
+        ];
     }
 }
 ```
@@ -116,6 +141,7 @@ Add the `Searchable` trait to your Eloquent model:
 ```php
 namespace App\Models;
 
+use App\Search\ProductIndex;
 use Illuminate\Database\Eloquent\Model;
 use Relevance\Concerns\Searchable;
 
@@ -123,16 +149,9 @@ class Product extends Model
 {
     use Searchable;
 
-    public function toSearchableArray(): array
+    public static function relevanceIndex(): ?string
     {
-        return [
-            'title'       => $this->title,
-            'description' => $this->description,
-            'brand'       => $this->brand,
-            'category'    => $this->category,
-            'price'       => (float) $this->price,
-            'in_stock'    => (bool) $this->in_stock,
-        ];
+        return ProductIndex::class;
     }
 }
 ```
