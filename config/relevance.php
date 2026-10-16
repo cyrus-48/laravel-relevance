@@ -150,6 +150,16 @@ return [
         'batch_size' => 500,
         'drain_every_seconds' => 2,
         'max_attempts' => 8,
+        // Rows stuck in `processing` longer than this (worker died) are returned to `pending`.
+        'visibility_timeout' => 300,
+        // A single DrainOutbox run keeps claiming batches until empty, up to this many.
+        'max_batches_per_job' => 50,
+    ],
+
+    // Scheduled safety nets registered by the package (drain every minute, prune daily).
+    // Requires your application's scheduler (`schedule:run` / `schedule:work`) to be running.
+    'schedule' => [
+        'enabled' => true,
     ],
 
     'resilience' => [
@@ -164,6 +174,7 @@ return [
         'interactions_days' => 395,
         'search_logs_days' => 90,
         'impressions_days' => 30,
+        'outbox_days' => 7,
     ],
 
     'http' => [

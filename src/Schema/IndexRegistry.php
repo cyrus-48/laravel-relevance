@@ -16,6 +16,9 @@ class IndexRegistry
     /** @var array<class-string<Model>, IndexDefinition> modelClass => definition */
     private array $modelMap = [];
 
+    /** @var array<class-string<Model>, true> models that already have the outbox observer attached */
+    private array $observed = [];
+
     /**
      * @param list<class-string<IndexDefinition>|IndexDefinition> $indexes
      */
@@ -94,12 +97,29 @@ class IndexRegistry
         return $this->definitions;
     }
 
+    /**
+     * Attach the outbox observer to a model exactly once per registry instance.
+     *
+     * Called from the `Searchable` trait's boot hook, so models using the trait are
+     * indexed without being listed anywhere in config. Idempotent: calling it again
+     * (or via registerObservers()) never produces duplicate outbox rows.
+     *
+     * @param class-string<Model> $modelClass
+     */
+    public function observeModel(string $modelClass): void
+    {
+        if (isset($this->observed[$modelClass])) {
+            return;
+        }
+
+        $this->observed[$modelClass] = true;
+        $modelClass::observe(new SearchableObserver($this));
+    }
+
     public function registerObservers(): void
     {
-        $observer = new SearchableObserver($this);
-
-        foreach ($this->modelMap as $modelClass => $def) {
-            $modelClass::observe($observer);
+        foreach (array_keys($this->modelMap) as $modelClass) {
+            $this->observeModel($modelClass);
         }
     }
 }

@@ -48,8 +48,41 @@ class OutboxDispatcher
                     $row->markDone();
                 }
             } catch (Throwable $e) {
-                $maxAttempts = (int) config('relevance.queue.max_attempts', 5);
-                foreach ($indexRows as $row) {
+                $this->retryPerDocument($driver, $indexName, $indexRows, $e);
+            }
+        }
+    }
+
+    /**
+     * A batch failed. Re-process it one document at a time so a single poison document
+     * only fails (and eventually dead-letters) its own rows instead of blocking every
+     * other document in the batch. Writes are idempotent, so re-applying is safe.
+     *
+     * @param Collection<int, Outbox> $indexRows
+     */
+    private function retryPerDocument(Indexer $driver, string $indexName, Collection $indexRows, Throwable $batchError): void
+    {
+        $maxAttempts = (int) config('relevance.queue.max_attempts', 5);
+
+        /** @var Collection<string, Collection<int, Outbox>> $byDoc */
+        $byDoc = $indexRows->groupBy('doc_id');
+
+        if ($byDoc->count() === 1) {
+            foreach ($indexRows as $row) {
+                $row->markFailed($batchError->getMessage(), $maxAttempts);
+            }
+
+            return;
+        }
+
+        foreach ($byDoc as $docRows) {
+            try {
+                $this->processIndexBatch($driver, $indexName, $docRows);
+                foreach ($docRows as $row) {
+                    $row->markDone();
+                }
+            } catch (Throwable $e) {
+                foreach ($docRows as $row) {
                     $row->markFailed($e->getMessage(), $maxAttempts);
                 }
             }
@@ -74,29 +107,20 @@ class OutboxDispatcher
         $targets = $this->generationManager->targetPhysicalNames($indexName);
         $def = $this->registry->get($indexName);
 
-        // Compute embeddings if index has vector fields
+        // Compute embeddings if index has a vector field
+        $vectorField = $def?->vectorFieldName();
         $embeddings = [];
-        if ($def !== null && $this->embeddingManager !== null) {
-            $hasVector = false;
-            foreach ($def->compiledSchema()->fields as $f) {
-                if (is_array($f) && ($f['type'] ?? '') === 'vector') {
-                    $hasVector = true;
-                    break;
-                }
+        if ($def !== null && $vectorField !== null && $this->embeddingManager !== null) {
+            $builder = $this->inputBuilder ?? new EmbeddingInputBuilder();
+            $texts = [];
+            $rowKeys = [];
+            foreach ($upsertRows as $row) {
+                $texts[] = $builder->build($def, $row->payload ?? []);
+                $rowKeys[] = $row->doc_id;
             }
-
-            if ($hasVector) {
-                $builder = $this->inputBuilder ?? new EmbeddingInputBuilder();
-                $texts = [];
-                $rowKeys = [];
-                foreach ($upsertRows as $row) {
-                    $texts[] = $builder->build($def, $row->payload ?? []);
-                    $rowKeys[] = $row->doc_id;
-                }
-                $vectors = $this->embeddingManager->embedMany($texts);
-                foreach ($rowKeys as $i => $id) {
-                    $embeddings[$id] = $vectors[$i] ?? [];
-                }
+            $vectors = $this->embeddingManager->embedMany($texts);
+            foreach ($rowKeys as $i => $id) {
+                $embeddings[$id] = $vectors[$i] ?? [];
             }
         }
 
@@ -105,9 +129,9 @@ class OutboxDispatcher
         foreach ($upsertRows as $row) {
             $fields = $row->payload ?? [];
             $vectorInputs = [];
-            if (isset($embeddings[$row->doc_id]) && !empty($embeddings[$row->doc_id])) {
-                $fields['embedding'] = $embeddings[$row->doc_id];
-                $vectorInputs['embedding'] = $embeddings[$row->doc_id];
+            if ($vectorField !== null && !empty($embeddings[$row->doc_id])) {
+                $fields[$vectorField] = $embeddings[$row->doc_id];
+                $vectorInputs[$vectorField] = $embeddings[$row->doc_id];
             }
 
             $documents[] = new Document(

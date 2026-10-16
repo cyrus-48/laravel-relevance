@@ -7,10 +7,21 @@ namespace Relevance\Concerns;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Relevance\Facades\Relevance;
 use Relevance\Recommendations\RecommendationBuilder;
+use Relevance\Schema\IndexRegistry;
 use Relevance\Search\SearchBuilder;
 
 trait Searchable
 {
+    /**
+     * Eloquent boot hook: attach the transactional-outbox observer to this model.
+     * Without this, models using the trait were only indexed if they had been
+     * registered manually before the service provider booted.
+     */
+    public static function bootSearchable(): void
+    {
+        app(IndexRegistry::class)->observeModel(static::class);
+    }
+
     /**
      * Start a relevance search query on this model.
      */

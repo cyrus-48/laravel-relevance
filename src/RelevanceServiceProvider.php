@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relevance;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
 use Relevance\Analytics\SearchLogger;
 use Relevance\Console\RelevanceDoctorCommand;
@@ -18,6 +19,7 @@ use Relevance\Embeddings\EmbeddingManager;
 use Relevance\Embeddings\TokenBudgetGuard;
 use Relevance\Indexing\GenerationManager;
 use Relevance\Indexing\OutboxDispatcher;
+use Relevance\Jobs\DrainOutbox;
 use Relevance\Schema\IndexRegistry;
 use Relevance\Search\Boosts\BoostEngine;
 use Relevance\Search\Profiles\ProfileRepository;
@@ -222,5 +224,13 @@ final class RelevanceServiceProvider extends ServiceProvider
         }
 
         $this->app->make(IndexRegistry::class)->registerObservers();
+
+        if ((bool) config('relevance.schedule.enabled', true)) {
+            $this->callAfterResolving(Schedule::class, static function (Schedule $schedule): void {
+                // Safety net: picks up rows whose wake-up dispatch was dropped or whose worker died.
+                $schedule->job(new DrainOutbox())->everyMinute();
+                $schedule->command('relevance:prune')->daily();
+            });
+        }
     }
 }
