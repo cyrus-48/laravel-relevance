@@ -19,7 +19,7 @@ Laravel Relevance is designed to be installed cleanly into any Laravel 11, 12, o
 ### Step 1: Install Composer Package
 
 ```bash
-composer require acme/laravel-relevance
+composer require cyrus-48/laravel-relevance
 ```
 
 ### Step 2: Publish Config and Migrations

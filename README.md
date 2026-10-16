@@ -54,7 +54,7 @@
 ### 1. Installation & Publishing
 
 ```bash
-composer require acme/laravel-relevance
+composer require cyrus-48/laravel-relevance
 php artisan relevance:install
 php artisan migrate
 ```
